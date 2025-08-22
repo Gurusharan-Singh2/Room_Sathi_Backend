@@ -6,7 +6,7 @@ const doc = {
     title: 'RoomSathi API',
     description: 'API Documentation',
   },
-  host: 'localhost:3000', 
+  host: 'room-sathi-backend.onrender.com', 
 };
 
 const outputFile = './swagger-output.json';
