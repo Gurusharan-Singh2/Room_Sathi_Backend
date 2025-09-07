@@ -7,6 +7,8 @@ import ErrorHandler from "../utils/error.js";
 import redis from "../config/redis.js";
 import { hashPassword } from "../utils/passwordUtils.js";
 import { generateToken } from "../utils/generateToken.js";
+import { getSignedUrlFromB2, uploadToB2 } from "../utils/b2.js";
+
 
 export const registerUser = catchAsyncError(async (req, res, next) => {
   const { username, email, password} = req.body;
@@ -32,112 +34,92 @@ export const registerUser = catchAsyncError(async (req, res, next) => {
 });
 
 
-export const verifyOtp=catchAsyncError(async(req,res,next)=>{
-    const { username, email, password,otp} = req.body;
-     if (!username || !email || !password || !otp ) {
+export const verifyOtp = catchAsyncError(async (req, res, next) => {
+  const { username, email, password, otp } = req.body;
+  const file = req.file; 
+
+  if (!username || !email || !password || !otp) {
     return next(new ErrorHandler("All fields are required", 400));
   }
 
-const MAX_ATTEMPTS = 5;
+  const MAX_ATTEMPTS = 5;
 
-const savedOtp = await redis.get(`otp:${email}`);
-if (!savedOtp || savedOtp !== otp) {
-  const failedKey = `otp_failed:${email}`;
-  const failedAttempts = parseInt((await redis.get(failedKey)) || "0") + 1;
+  const savedOtp = await redis.get(`otp:${email}`);
+  if (!savedOtp || savedOtp !== otp) {
+    const failedKey = `otp_failed:${email}`;
+    const failedAttempts = parseInt((await redis.get(failedKey)) || "0") + 1;
 
-  await redis.set(failedKey, failedAttempts, "EX", 1800);
+    await redis.set(failedKey, failedAttempts, "EX", 1800);
 
-  const remainingAttempts = MAX_ATTEMPTS - failedAttempts;
+    const remainingAttempts = MAX_ATTEMPTS - failedAttempts;
 
-  if (failedAttempts >= MAX_ATTEMPTS) {
-    await redis.set(`otp_lock:${email}`, "true", "EX", 1800);
-    return res.status(403).json({ 
-      success: false, 
-      message: "Account locked due to multiple failed attempts." 
+    if (failedAttempts >= MAX_ATTEMPTS) {
+      await redis.set(`otp_lock:${email}`, "true", "EX", 1800);
+      return res.status(403).json({
+        success: false,
+        message: "Account locked due to multiple failed attempts.",
+      });
+    }
+
+    return res.status(401).json({
+      success: false,
+      message: `Invalid OTP. You have ${remainingAttempts} attempt(s) remaining.`,
     });
   }
 
-  return res.status(401).json({ 
-    success: false, 
-    message: `Invalid OTP. You have ${remainingAttempts} attempt(s) remaining.` 
-  });
-}
+ 
+  await redis.del(`otp:${email}`);
+  await redis.del(`otp_failed:${email}`);
+  await redis.del(`otp_request_count:${email}`);
 
-
-    await redis.del(`otp:${email}`);
-    await redis.del(`otp_failed:${email}`);
-    await redis.del(`otp_request_count:${email}`);
-
-
-    const hashed = await hashPassword(password);
-    const newUser = await User.create({ username, email, password:hashed });
-
-    const token = generateToken({ id:newUser._id, email, name: username });
-
-
-    const userInfo={
-       "username": newUser.username,
-        "email": newUser.email,
-        "role": newUser.role,
-        "_id": newUser._id
-    }
-
-   res.status(200).json({
-      success: true,
-      message: "OTP verified successfully.",
-      token,
-     userInfo
+  let imageKey = null;
+  let imageUrl = null;
+  if (file) {
+    imageKey = `users/${Date.now()}-${file.originalname}`;
+    await uploadToB2({
+      key: imageKey,
+      body: file.buffer,
+      contentType: file.mimetype,
     });
 
+    imageUrl = await getSignedUrlFromB2(imageKey);
+  }
 
+  const hashed = await hashPassword(password);
+  const newUser = await User.create({
+    username,
+    email,
+    password: hashed,
+    image: imageKey, 
+  });
 
-})
+  const token = generateToken({ id: newUser._id, email, name: username });
 
+  const userInfo = {
+    username: newUser.username,
+    email: newUser.email,
+    role: newUser.role,
+    _id: newUser._id,
+    image: imageUrl, 
+  };
 
+  res.status(200).json({
+    success: true,
+    message: "OTP verified successfully.",
+    token,
+    userInfo,
+  });
+});
 
+export const getSignedProfile=catchAsyncError(async(req,res,next)=>{
+  const {userId}=req.body;
 
+  const existingUser=await User.findById(userId);
 
-//   try {
-    
-    
-//     const { name, email, phone, otp } = req.body;
-//     const identifier = phone || email;
-
-//     if (!identifier || !otp) {
-//       return res.status(400).json({ success: false, message: "OTP and email/phone are required." });
-//     }
-
-//     const savedOtp = await redis.get(`otp:${identifier}`);
-//     if (!savedOtp || savedOtp !== otp) {
-//       const failedKey = `otp_failed:${identifier}`;
-//       const failedAttempts = parseInt((await redis.get(failedKey)) || "0") + 1;
-//       await redis.set(failedKey, failedAttempts, "EX", 1800);
-//       if (failedAttempts >= 5) {
-//         await redis.set(`otp_lock:${identifier}`, "true", "EX", 1800);
-//         return res.status(403).json({ success: false, message: "Account locked due to multiple failed attempts." });
-//       }
-
-//       return res.status(401).json({ success: false, message: "Invalid OTP." });
-//     }
-
-//     await redis.del(`otp:${identifier}`);
-//     await redis.del(`otp_failed:${identifier}`);
-//     await redis.del(`otp_request_count:${identifier}`);
-
+  let SignedUrl=await getSignedUrlFromB2(existingUser.image);
   
-   
-
-//     const token = generateToken({ userId, phone, email, name: finalName });
-
-//     res.status(200).json({
-//       success: true,
-//       message: "OTP verified successfully.",
-//       token,
-//       userId,
-//       name: finalName,
-//       phone:phone
-//     });
-//   } catch (err) {
-//     next(err);
-//   }
-// };
+  res.status(200).json({
+    success:true,
+    user:{existingUser,signedUrl:SignedUrl}
+  });
+})
