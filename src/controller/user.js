@@ -111,22 +111,36 @@ export const verifyOtp = catchAsyncError(async (req, res, next) => {
   });
 });
 
-export const getSignedProfile=catchAsyncError(async(req,res,next)=>{
+export const getSignedProfile = catchAsyncError(async (req, res, next) => {
+  const { userId } = req.body || {};
 
-  const {userId}=req.body;
-  if(!userId){
-      res.status(401).json({
-    success:false,
-    message:"userId is required !!!!"
-  });
+
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      message: "userId is required",
+    });
   }
 
-  const existingUser=await User.findById(userId);
+  const existingUser = await User.findById(userId).select("-password -tokens");
+  if (!existingUser) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found",
+    });
+  }
 
-  let SignedUrl=await getSignedUrlFromB2(existingUser.image);
-  
+  let signedUrl = null;
+  if (existingUser.image) {
+    signedUrl = await getSignedUrlFromB2(existingUser.image);
+  }
+
   res.status(200).json({
-    success:true,
-    user:{existingUser,signedUrl:SignedUrl}
+    success: true,
+    user: {
+      ...existingUser.toObject(),
+      signedUrl,
+    },
   });
-})
+});
+
