@@ -112,7 +112,14 @@ export const verifyOtp = catchAsyncError(async (req, res, next) => {
 });
 
 export const getSignedProfile=catchAsyncError(async(req,res,next)=>{
+
   const {userId}=req.body;
+  if(!userId){
+      res.status(401).json({
+    success:false,
+    message:"userId is required !!!!"
+  });
+  }
 
   const existingUser=await User.findById(userId);
 
