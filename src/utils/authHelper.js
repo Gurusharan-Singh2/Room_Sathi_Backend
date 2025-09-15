@@ -11,15 +11,15 @@ export const checkOtpRestrictions = async (identifier) => {
   const cooldownKey = `otp_cooldown:${identifier}`;
 
   if (await redis.get(lockKey)) {
-    throw new Error(`${isPhone ? "Phone" : "Email"} locked due to multiple failed attempts! Try again after 30 minutes.`);
+    throw new Error(`${"Email"} locked due to multiple failed attempts! Try again after 30 minutes.`);
   }
 
   if (await redis.get(spamLockKey)) {
-    throw new Error(`Too many OTP requests for this ${isPhone ? "phone" : "email"}! Please wait 1 hour before requesting again.`);
+    throw new Error(`Too many OTP requests for this ${"email"}! Please wait 1 hour before requesting again.`);
   }
 
   if (await redis.get(cooldownKey)) {
-    throw new Error(`Please wait 1 minute before requesting a new OTP for this ${isPhone ? "phone" : "email"}!`);
+    throw new Error(`Please wait 1 minute before requesting a new OTP for this ${"email"}!`);
   }
 };
 
@@ -51,7 +51,7 @@ export const trackOtpRequests = async (identifier) => {
 
   if (currentCount >= 2) {
     await redis.set(spamLockKey, "locked", "EX", 600); // Lock for 1 hour
-    throw new Error(`Too many OTP requests for this ${isPhone ? "phone" : "email"}. Please wait 1 hour before trying again.`);
+    throw new Error(`Too many OTP requests for this ${"email"}. Please wait 1 hour before trying again.`);
   }
 
   await redis.set(otpRequestKey, currentCount + 1, "EX", 600);
