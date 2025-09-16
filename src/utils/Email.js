@@ -1,32 +1,30 @@
 import '../config/env.js';
 import nodemailer from 'nodemailer';
 
+
 export const sendEmail = async ({ email, subject, message }) => {
   try {
     const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
+      host: "smtp-relay.brevo.com",
       port: 587,
-      secure: false, // use STARTTLS
+      secure: false, // STARTTLS
       auth: {
-        user: process.env.SMTP_MAIL,
-        pass: process.env.SMTP_PASSWORD, // App Password if 2FA enabled
+        user: "971cab002@smtp-brevo.com",                  // <-- important, always "apikey"
+        pass: process.env.BREVO_API_KEY, // <-- your SMTP key from Brevo
       },
     });
 
-    const mailOptions = {
-      from: `"My App" <${process.env.SMTP_MAIL}>`,
+    const info = await transporter.sendMail({
+      from: `"My App" <${process.env.BREVO_USER}>`, // your Gmail/registered email
       to: email,
       subject,
       html: message,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("Sending email to:", email);
     console.log("Email sent:", info.response);
-
     return true;
-  } catch (error) {
-    console.error("Error sending email:", error);
+  } catch (err) {
+    console.error("Error sending email:", err);
     return false;
   }
 };
