@@ -5,7 +5,7 @@ import {catchAsyncError} from '../utils/catchAsyncError.js'
 import ErrorHandler from "../utils/error.js";
  import {checkOtpRestrictions,sendOtpByEmail, trackOtpRequests} from '../utils/authHelper.js'
 import redis from "../config/redis.js";
-import { hashPassword } from "../utils/passwordUtils.js";
+import { hashPassword,comparePassword } from "../utils/passwordUtils.js";
 import { generateToken } from "../utils/generateToken.js";
 import { getSignedUrlFromB2, uploadToB2 } from "../utils/b2.js";
 
@@ -111,6 +111,44 @@ export const verifyOtp = catchAsyncError(async (req, res, next) => {
   });
 });
 
+
+
+
+export const loginWithPassword = catchAsyncError(async (req, res, next) => {
+  
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return next(new ErrorHandler("Email and password are required", 400));
+  }
+
+  const user = await User.findOne({ email }).select('+password');;
+  if (!user) {
+    return next(new ErrorHandler("User not found", 404));
+  }
+
+  
+  const isMatch = await comparePassword(password, user.password);
+  if (!isMatch) {
+    return next(new ErrorHandler("Incorrect password", 401));
+  }
+
+  const token = generateToken({ id: user._id, email: user.email, name: user.username });
+
+  res.status(200).json({
+    success: true,
+    message: "Login successful",
+    token,
+    userInfo: {
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      image: user.image,
+    },
+  });
+});
+
 export const getSignedProfile = catchAsyncError(async (req, res, next) => {
   const { userId } = req.body || {};
 
@@ -132,7 +170,7 @@ export const getSignedProfile = catchAsyncError(async (req, res, next) => {
 
   let signedUrl = null;
   if (existingUser.image) {
-    signedUrl = await getSignedUrlFromB2(existingUser.image);
+    signedUrl = await getSignedUrlFromB2(existingUser.image,{expiresIn:24*60*60});
   }
 
   res.status(200).json({
