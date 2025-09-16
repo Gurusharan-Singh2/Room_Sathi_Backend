@@ -170,7 +170,7 @@ export const getSignedProfile = catchAsyncError(async (req, res, next) => {
 
   let signedUrl = null;
   if (existingUser.image) {
-    signedUrl = await getSignedUrlFromB2(existingUser.image,{expiresIn:24*60*60});
+    signedUrl = await getSignedUrlFromB2(existingUser.image);
   }
 
   res.status(200).json({
