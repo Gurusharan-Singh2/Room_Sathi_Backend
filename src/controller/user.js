@@ -1,5 +1,5 @@
 // user model
-
+import crypto from "crypto";
 import User  from "../models/user.js";
 import {catchAsyncError} from '../utils/catchAsyncError.js'
 import ErrorHandler from "../utils/error.js";
@@ -8,6 +8,7 @@ import redis from "../config/redis.js";
 import { hashPassword,comparePassword } from "../utils/passwordUtils.js";
 import { generateToken } from "../utils/generateToken.js";
 import { getSignedUrlFromB2, uploadToB2 } from "../utils/b2.js";
+import { sendEmail } from "../utils/Email.js";
 
 
 export const registerUser = catchAsyncError(async (req, res, next) => {
@@ -148,6 +149,100 @@ export const loginWithPassword = catchAsyncError(async (req, res, next) => {
     },
   });
 });
+
+
+
+// forgot 
+
+
+export const forgotPassword = catchAsyncError(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return next(new ErrorHandler("Email is required", 400));
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    return next(new ErrorHandler("User not found", 404));
+  }
+
+  // Generate a secure reset token
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+
+  // Save hashed token in Redis (expires in 15 minutes)
+  await redis.set(`resetToken:${email}`, hashedToken, "EX", 900);
+
+  // Construct reset link (frontend)
+  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
+
+  const message = `
+    <div style="font-family:sans-serif;padding:20px;">
+      <h2>Reset Your Password</h2>
+      <p>Hi ${user.username},</p>
+      <p>You requested to reset your password. Click below to proceed:</p>
+      <a href="${resetLink}" style="background:#007bff;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;">
+        Reset Password
+      </a>
+      <p style="margin-top:15px;">This link will expire in <strong>15 minutes</strong>.</p>
+      <p>If you didn’t request this, you can safely ignore this email.</p>
+    </div>
+  `;
+
+  const emailSent = await sendEmail({
+    email,
+    subject: "Password Reset Request",
+    message,
+  });
+
+  if (!emailSent) {
+    return next(new ErrorHandler("Failed to send password reset email", 500));
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "Password reset link sent to your email.",
+  });
+});
+
+
+// reset - pass
+
+export const resetPassword = catchAsyncError(async (req, res, next) => {
+  const { email, token, newPassword } = req.body;
+
+  if (!email || !token || !newPassword) {
+    return next(new ErrorHandler("All fields are required", 400));
+  }
+
+  
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+  const savedToken = await redis.get(`resetToken:${email}`);
+
+  if (!savedToken || savedToken !== hashedToken) {
+    return next(new ErrorHandler("Invalid or expired token", 400));
+  }
+
+  
+  const user = await User.findOne({ email });
+  if (!user) {
+    return next(new ErrorHandler("User not found", 404));
+  }
+
+  const hashedPassword = await hashPassword(newPassword);
+  user.password = hashedPassword;
+  await user.save();
+
+ 
+  await redis.del(`resetToken:${email}`);
+
+  res.status(200).json({
+    success: true,
+    message: "Password reset successful. You can now log in with your new password.",
+  });
+});
+
 
 export const getSignedProfile = catchAsyncError(async (req, res, next) => {
   const { userId } = req.body || {};

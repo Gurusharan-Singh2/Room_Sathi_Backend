@@ -27,14 +27,8 @@ const userSchema = new mongoose.Schema({
     select:false
     
   },
-  address: {
-    street: { type: String},
-    city: { type: String},
-    state: { type: String },
-    zipCode: { type: String },
-    country: { type: String }
-  }
-,  
+ 
+  
   phone:String,
 
   role:{

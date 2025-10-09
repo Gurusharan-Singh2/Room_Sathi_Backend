@@ -11,6 +11,7 @@ import Dbconnect from './src/config/dbConnect.js';
 import ErrorHandler, { errorMiddleware } from './src/utils/error.js';
 import redis from "./src/config/redis.js";
 import userRouter from './src/routes/userRouter.js'
+import roomRouter from './src/routes/roomRouter.js'
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -54,6 +55,7 @@ app.get('/test-error', (req, res, next) => {
   next(new ErrorHandler('Forced test error', 418));
 });
 app.use('/api/user',userRouter)
+app.use('/api/room',roomRouter)
 
 
 app.use(errorMiddleware);
